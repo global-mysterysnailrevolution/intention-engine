@@ -2,72 +2,88 @@
 
 ## What This Is
 
-An intention-driven hypergraph where searching creates knowledge. Unlike static indices,
-each query potentially discovers new multi-way relationships (hyperedges) by projecting
-node features through a utility lens. The graph grows richer through use.
+A drop-in RAG replacement using intention-driven hypergraph search. Instead of
+embedding chunks into a flat vector store, it builds a hypergraph where documents,
+sections, and chunks are connected by structural and semantic hyperedges. Each
+search discovers and persists new cross-document connections. The graph gets
+smarter with use.
 
-## Agent Usage (CLI)
-
-All commands output JSON. Graphs auto-persist to `~/.intention-engine/<name>/`.
+## RAG Usage (Primary)
 
 ```bash
-# Create a graph and add nodes
-python -m intention_engine init myproject
-python -m intention_engine add-node myproject sensor_1 "Temperature sensor for CNC monitoring" --ontology equipment
-python -m intention_engine add-node myproject proc_mill "5-axis CNC milling process" --ontology process
+# Ingest files or directories — auto-chunks with structural awareness
+python -m intention_engine ingest <graph> ./docs/
+python -m intention_engine ingest <graph> ./src/auth.py --chunk-size 1024
+python -m intention_engine ingest-text <graph> "raw text" --name "label"
 
-# Batch add
-python -m intention_engine add-nodes myproject --json '[{"id":"a","description":"thing","ontology":"type"}]'
-
-# Search — this is where discovery happens
-python -m intention_engine search myproject "reduce defect rate in precision machining"
+# Retrieve context for LLM — the core RAG operation
+python -m intention_engine retrieve <graph> "how does auth work?" --top 10
+python -m intention_engine retrieve <graph> "security policies" --format xml
+python -m intention_engine retrieve <graph> "fast lookup" --no-explore
 
 # Inspect
-python -m intention_engine stats myproject
-python -m intention_engine list-nodes myproject --ontology equipment
-python -m intention_engine list-edges myproject --source minted
-python -m intention_engine explain myproject he_abc123def456
+python -m intention_engine documents <graph>
+python -m intention_engine stats <graph>
+python -m intention_engine list-edges <graph> --source minted
+```
+
+## Low-Level Graph Commands
+
+```bash
 python -m intention_engine graphs
+python -m intention_engine init <graph>
+python -m intention_engine add-node <graph> <id> "<description>" --ontology <type>
+python -m intention_engine add-nodes <graph> --json '[...]'
+python -m intention_engine add-edge <graph> "<label>" <id1> <id2> [id3...]
+python -m intention_engine search <graph> "<intention>" --top 20
+python -m intention_engine list-nodes <graph> [--ontology <type>]
+python -m intention_engine explain <graph> <edge_id>
+python -m intention_engine decay <graph>
 ```
 
 ## MCP Server
 
-If `mcp[cli]` is installed, run as MCP server:
 ```bash
-python -m intention_engine.mcp_server
+python -m intention_engine.mcp_server  # requires: pip install mcp[cli]
 ```
 
-Tools exposed: `intention_add_node`, `intention_add_nodes`, `intention_add_edge`,
+13 tools: `intention_add_node`, `intention_add_nodes`, `intention_add_edge`,
 `intention_search`, `intention_stats`, `intention_list_nodes`, `intention_list_edges`,
-`intention_explain`, `intention_graphs`
+`intention_explain`, `intention_graphs`, `intention_ingest`, `intention_ingest_text`,
+`intention_retrieve`, `intention_documents`
 
-## Key Concepts
+## Why This Replaces RAG
 
-- **Nodes** = entities from any ontology, embedded from their text description
-- **Hyperedges** = multi-way relationships connecting 2+ nodes across any ontology boundaries
-- **Intention** = natural language goal that drives search and discovery
-- **Exploit** = traverse existing hyperedge structure (fast, 2 SpMV operations)
-- **Explore** = project nodes through intention lens → cluster → score coherence → mint new hyperedges
-- **Minting** = when explore discovers a coherent group, it creates a persistent hyperedge
+| Traditional RAG | Intention Engine |
+|----------------|-----------------|
+| Chunks retrieved independently | Hyperedges connect related chunks across documents |
+| Same query → same results forever | Each query mints new structure; search improves |
+| Chunking destroys document hierarchy | Multi-level: document → section → chunk nodes |
+| No cross-document awareness | Explore phase discovers cross-doc connections |
+| "Lost in the middle" redundancy | Coherence scoring surfaces diverse results |
 
-## How It Works
+## How Search Works
 
-1. You add nodes with descriptions and ontology tags
-2. You search with natural language intentions
-3. First search: no edges exist, so EXPLORE fires and discovers structure from raw embeddings
-4. EXPLORE mints hyperedges for coherent groups it discovers
-5. Next search: EXPLOIT traverses the minted edges (fast), EXPLORE may find more
-6. Over time the graph gets richer — more structure means faster, more accurate searches
+1. **EXPLOIT**: Traverse existing hyperedge structure (2 SpMV operations, <1ms)
+2. **EXPLORE**: Project nodes through intention lens → cluster → score coherence → mint
+3. **FUSE**: Combine results from both phases, boost nodes found by both
+4. **PERSIST**: Minted hyperedges are saved — future queries benefit
+
+## Context Formats
+
+- `text`: `[filename:lines (section)]` headers with plain text (default)
+- `markdown`: `### Source N: filename > section` with content
+- `xml`: `<context><chunk source="..." section="..." lines="...">` tags
 
 ## Test & Dev
 
 ```bash
-python -m pytest tests/ -v          # 180 tests
-python examples/manufacturing_demo.py  # End-to-end demo
+python -m pytest tests/ -v             # 353 tests
+python examples/manufacturing_demo.py  # Discovery demo
 ```
 
 ## No ML Dependencies Required
 
-The built-in `HashEncoder` provides deterministic, word-similarity-based embeddings.
-No GPU, no model downloads. The semantic signal comes from how you describe nodes.
-For production use, swap in sentence-transformers via `engine.set_encoder()`.
+Built-in `HashEncoder` uses deterministic word-similarity embeddings.
+No GPU, no model downloads. Semantic signal comes from descriptions.
+For production: `engine.set_encoder(SentenceTransformer(...).encode)`
