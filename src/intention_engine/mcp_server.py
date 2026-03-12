@@ -154,6 +154,7 @@ def main():
         intention: str,
         max_results: int = 20,
         explore: bool = True,
+        valid_at: float | None = None,
     ) -> str:
         """Search the hypergraph driven by an intention.
 
@@ -170,9 +171,10 @@ def main():
             intention: Natural language description of what you're looking for
             max_results: Maximum number of results to return
             explore: Whether to run the explore phase (set False for exploit-only)
+            valid_at: Restrict exploit phase to edges valid at this Unix timestamp (optional)
         """
         engine = _get_engine(graph)
-        result = engine.search(intention=intention, max_results=max_results, explore=explore)
+        result = engine.search(intention=intention, max_results=max_results, explore=explore, valid_at=valid_at)
         _save(engine, graph)
 
         return json.dumps({
@@ -292,6 +294,57 @@ def main():
                 n_edges = sum(1 for _ in open(edges_file)) if os.path.exists(edges_file) else 0
                 graphs.append({"name": name, "nodes": n_nodes, "edges": n_edges})
         return json.dumps({"graphs": graphs})
+
+    @mcp.tool()
+    def intention_temporal_diff(graph: str, t1: float, t2: float) -> str:
+        """Show what changed in the graph between two timestamps.
+
+        Args:
+            graph: Name of the hypergraph
+            t1: Start timestamp (Unix epoch seconds)
+            t2: End timestamp (Unix epoch seconds)
+        """
+        engine = _get_engine(graph)
+        engine.enable_temporal()
+        # Load event log
+        path = _store_path(graph)
+        events_path = os.path.join(path, "events.jsonl")
+        if os.path.exists(events_path):
+            engine._event_log.load(events_path)
+        diff = engine.temporal_diff(t1, t2)
+        return json.dumps({
+            "t1": diff.t1, "t2": diff.t2,
+            "nodes_added": diff.nodes_added,
+            "nodes_removed": diff.nodes_removed,
+            "edges_minted": diff.edges_minted,
+            "edges_closed": diff.edges_closed,
+            "edges_reinforced": diff.edges_reinforced,
+            "searches_executed": diff.searches_executed,
+        })
+
+    @mcp.tool()
+    def intention_edge_history(graph: str, edge_id: str) -> str:
+        """Get the full intention history for a hyperedge — every intention that touched it.
+
+        Args:
+            graph: Name of the hypergraph
+            edge_id: The hyperedge ID
+        """
+        engine = _get_engine(graph)
+        history = engine.edge_history(edge_id)
+        return json.dumps({"edge_id": edge_id, "history": history})
+
+    @mcp.tool()
+    def intention_graph_at(graph: str, timestamp: float) -> str:
+        """Get graph statistics as they would have appeared at a specific point in time.
+
+        Args:
+            graph: Name of the hypergraph
+            timestamp: Unix epoch seconds
+        """
+        engine = _get_engine(graph)
+        stats = engine.graph_at(timestamp)
+        return json.dumps(stats)
 
     @mcp.tool()
     def intention_ingest(graph: str, path: str, recursive: bool = True, chunk_size: int = 512) -> str:

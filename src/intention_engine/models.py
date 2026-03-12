@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any, Literal
 import numpy as np
@@ -29,6 +31,16 @@ class HyperedgeProvenance:
 
 
 @dataclass
+class IntentionEvent:
+    """Record of an intention touching a hyperedge."""
+
+    timestamp: float
+    intention: str
+    action: str  # "minted", "reinforced", "weakened", "closed"
+    score: float = 0.0
+
+
+@dataclass
 class Hyperedge:
     id: str
     members: frozenset[str]  # Set of member node IDs
@@ -42,6 +54,9 @@ class Hyperedge:
     last_accessed: float = field(default_factory=time.time)
     created_at: float = field(default_factory=time.time)
     weight: float = 1.0
+    valid_from: float = 0.0
+    valid_until: float | None = None
+    intention_history: list[IntentionEvent] = field(default_factory=list)
 
 
 @dataclass
@@ -126,3 +141,26 @@ class EngineConfig:
     use_llm_decomposition: bool = False
     llm_model: str | None = None
     max_mints_per_query: int = 10
+
+
+@dataclass
+class TemporalQuery:
+    """Parameters for time-scoped search."""
+
+    as_of: float | None = None  # None = current time
+    valid_at: float | None = None  # Filter edges valid at this time
+    time_range: tuple[float, float] | None = None  # (start, end) for range queries
+
+
+@dataclass
+class TemporalDiff:
+    """Structured diff between two time points."""
+
+    t1: float
+    t2: float
+    nodes_added: list[str] = field(default_factory=list)
+    nodes_removed: list[str] = field(default_factory=list)
+    edges_minted: list[str] = field(default_factory=list)
+    edges_closed: list[str] = field(default_factory=list)
+    edges_reinforced: list[str] = field(default_factory=list)
+    searches_executed: int = 0

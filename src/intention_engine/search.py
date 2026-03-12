@@ -28,10 +28,16 @@ class SearchEngine:
         self.projector = UtilityProjector()
         self.scorer = CoherenceScorer(weights=config.coherence_weights)
 
-    def search(self, intention: Intention, max_results: int = 20) -> SearchResult:
-        """Execute two-phase search."""
+    def search(self, intention: Intention, max_results: int = 20, valid_at: float | None = None) -> SearchResult:
+        """Execute two-phase search.
+
+        Parameters
+        ----------
+        valid_at : float | None
+            If given, restrict exploit phase to edges valid at this timestamp.
+        """
         # Phase 1: Exploit
-        exploit_nodes, exploit_edges, exploit_stats = self._exploit(intention)
+        exploit_nodes, exploit_edges, exploit_stats = self._exploit(intention, valid_at=valid_at)
 
         # Decide whether to explore
         minted_edges: list[Hyperedge] = []
@@ -60,7 +66,7 @@ class SearchEngine:
         )
 
     def _exploit(
-        self, intention: Intention
+        self, intention: Intention, valid_at: float | None = None,
     ) -> tuple[list[ScoredNode], list[Hyperedge], ExploitStats]:
         """Phase 1: Traverse existing structure via SpMV over the incidence matrix."""
         t0 = time.perf_counter()
@@ -68,7 +74,10 @@ class SearchEngine:
         if self.store.num_edges == 0 or self.store.num_nodes == 0:
             return [], [], ExploitStats(elapsed_ms=(time.perf_counter() - t0) * 1000)
 
-        H = self.store.incidence_matrix()  # (|V|, |E|)
+        if valid_at is not None:
+            H = self.store.incidence_matrix_at(valid_at)
+        else:
+            H = self.store.incidence_matrix()  # (|V|, |E|)
 
         # Resolve intent vector: prefer full embedding, fall back to mean of predicate embeddings
         intent_vec: np.ndarray | None = None
@@ -81,7 +90,11 @@ class SearchEngine:
 
         # Score each edge by cosine similarity to intent vector
         self.store._ensure_indexed()
-        edge_ids_sorted = sorted(self.store.edges.keys())
+        if valid_at is not None:
+            valid_edges = self.store.valid_edges_at(valid_at)
+            edge_ids_sorted = sorted(valid_edges.keys())
+        else:
+            edge_ids_sorted = sorted(self.store.edges.keys())
         edge_scores = np.zeros(len(edge_ids_sorted))
 
         if intent_vec is not None:

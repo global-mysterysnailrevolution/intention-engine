@@ -11,13 +11,19 @@ Commands:
     add-node <graph> <id> <description> [--ontology ONT]
     add-nodes <graph> --json '<json_array>'   Batch add nodes
     add-edge <graph> <label> <id1> <id2> [id3...]
-    search <graph> <intention> [--top N]      Search with intention
+    search <graph> <intention> [--top N] [--valid-at T]
+                                              Search with intention
     stats <graph>                             Graph statistics
     list-nodes <graph> [--ontology ONT]       List all nodes
     list-edges <graph> [--source SOURCE]      List all hyperedges
     explain <graph> <edge_id>                 Explain a hyperedge
     decay <graph> [--threshold T]             Prune low-weight edges
     graphs                                    List all named graphs
+
+Temporal Commands:
+    temporal-diff <graph> <t1> <t2>           Show changes between two timestamps
+    edge-history <graph> <edge_id>            Show intention history for an edge
+    graph-at <graph> <timestamp>              Show graph stats at a point in time
 
 RAG Commands:
     ingest <graph> <path> [--recursive] [--chunk-size N]
@@ -151,6 +157,7 @@ def cmd_search(args):
         intention=args.intention,
         max_results=args.top,
         explore=not args.no_explore,
+        valid_at=args.valid_at,
     )
     _save(engine, args.graph)  # Save newly minted edges
 
@@ -259,6 +266,42 @@ def cmd_graphs(args):
     _json_out({"graphs": graphs})
 
 
+# === Temporal Commands ===
+
+
+def cmd_temporal_diff(args):
+    engine = _get_engine(args.graph)
+    engine.enable_temporal()
+    # Need to load event log
+    path = _store_path(args.graph)
+    events_path = os.path.join(path, "events.jsonl")
+    if os.path.exists(events_path):
+        engine._event_log.load(events_path)
+    diff = engine.temporal_diff(args.t1, args.t2)
+    _json_out({
+        "t1": diff.t1,
+        "t2": diff.t2,
+        "nodes_added": diff.nodes_added,
+        "nodes_removed": diff.nodes_removed,
+        "edges_minted": diff.edges_minted,
+        "edges_closed": diff.edges_closed,
+        "edges_reinforced": diff.edges_reinforced,
+        "searches_executed": diff.searches_executed,
+    })
+
+
+def cmd_edge_history(args):
+    engine = _get_engine(args.graph)
+    history = engine.edge_history(args.edge_id)
+    _json_out({"edge_id": args.edge_id, "history": history})
+
+
+def cmd_graph_at(args):
+    engine = _get_engine(args.graph)
+    stats = engine.graph_at(args.timestamp)
+    _json_out(stats)
+
+
 # === RAG Commands ===
 
 
@@ -358,6 +401,7 @@ def main():
     p.add_argument("intention")
     p.add_argument("--top", type=int, default=20)
     p.add_argument("--no-explore", action="store_true", help="Exploit only, skip explore")
+    p.add_argument("--valid-at", type=float, default=None, help="Restrict to edges valid at this timestamp")
 
     # stats
     p = sub.add_parser("stats", help="Graph statistics")
@@ -385,6 +429,22 @@ def main():
 
     # graphs
     sub.add_parser("graphs", help="List all named graphs")
+
+    # temporal-diff
+    p = sub.add_parser("temporal-diff", help="Show changes between two timestamps")
+    p.add_argument("graph")
+    p.add_argument("t1", type=float)
+    p.add_argument("t2", type=float)
+
+    # edge-history
+    p = sub.add_parser("edge-history", help="Show intention history for an edge")
+    p.add_argument("graph")
+    p.add_argument("edge_id")
+
+    # graph-at
+    p = sub.add_parser("graph-at", help="Show graph stats at a point in time")
+    p.add_argument("graph")
+    p.add_argument("timestamp", type=float)
 
     # ingest
     p = sub.add_parser("ingest", help="Ingest a file or directory")
@@ -427,6 +487,9 @@ def main():
         "explain": cmd_explain,
         "decay": cmd_decay,
         "graphs": cmd_graphs,
+        "temporal-diff": cmd_temporal_diff,
+        "edge-history": cmd_edge_history,
+        "graph-at": cmd_graph_at,
         "ingest": cmd_ingest,
         "ingest-text": cmd_ingest_text,
         "retrieve": cmd_retrieve,

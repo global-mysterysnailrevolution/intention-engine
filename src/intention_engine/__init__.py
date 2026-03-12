@@ -4,6 +4,7 @@ from .models import (
     Node,
     Hyperedge,
     HyperedgeProvenance,
+    IntentionEvent,
     Predicate,
     Intention,
     SearchScope,
@@ -13,11 +14,15 @@ from .models import (
     ExploitStats,
     ExploreStats,
     EngineConfig,
+    TemporalQuery,
+    TemporalDiff,
     _make_id,
 )
 from .engine import IntentionEngine
 from .hypergraph import HypergraphStore
 from .encoder import HashEncoder
+from .events import GraphEvent, EventLog, EventType
+from .temporal import temporal_embedding, is_edge_valid_at, temporal_similarity
 from .rag import IntentionRAG, RAGConfig
 from .ingestion import IngestionPipeline, IngestConfig, IngestResult
 from .context import ContextAssembler, ContextConfig
@@ -29,6 +34,7 @@ __all__ = [
     "Node",
     "Hyperedge",
     "HyperedgeProvenance",
+    "IntentionEvent",
     "Predicate",
     "Intention",
     "SearchScope",
@@ -38,8 +44,16 @@ __all__ = [
     "ExploitStats",
     "ExploreStats",
     "EngineConfig",
+    "TemporalQuery",
+    "TemporalDiff",
     "HashEncoder",
     "_make_id",
+    "GraphEvent",
+    "EventLog",
+    "EventType",
+    "temporal_embedding",
+    "is_edge_valid_at",
+    "temporal_similarity",
     "IntentionRAG",
     "RAGConfig",
     "IngestionPipeline",
