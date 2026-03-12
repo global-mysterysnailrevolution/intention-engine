@@ -18,6 +18,15 @@ Commands:
     explain <graph> <edge_id>                 Explain a hyperedge
     decay <graph> [--threshold T]             Prune low-weight edges
     graphs                                    List all named graphs
+
+RAG Commands:
+    ingest <graph> <path> [--recursive] [--chunk-size N]
+                                              Ingest a file or directory
+    ingest-text <graph> <text> [--name NAME] [--ontology ONT]
+                                              Ingest raw text
+    retrieve <graph> <query> [--top N] [--format text|markdown|xml] [--no-explore]
+                                              Retrieve context for a query (RAG)
+    documents <graph>                         List ingested documents
 """
 
 from __future__ import annotations
@@ -250,6 +259,66 @@ def cmd_graphs(args):
     _json_out({"graphs": graphs})
 
 
+# === RAG Commands ===
+
+
+def cmd_ingest(args):
+    from intention_engine.rag import IntentionRAG, RAGConfig
+    config = RAGConfig(graph_name=args.graph, chunk_size=args.chunk_size)
+    rag = IntentionRAG(config=config)
+    result = rag.ingest(args.path, recursive=args.recursive)
+    _json_out({
+        "status": "ok",
+        "documents": result.documents,
+        "chunks": result.chunks,
+        "nodes_created": result.nodes_created,
+        "edges_created": result.edges_created,
+        "files": result.files,
+        **rag.stats(),
+    })
+
+
+def cmd_ingest_text(args):
+    from intention_engine.rag import IntentionRAG, RAGConfig
+    config = RAGConfig(graph_name=args.graph)
+    rag = IntentionRAG(config=config)
+    result = rag.ingest_text(args.text, name=args.name, ontology=args.ontology)
+    _json_out({
+        "status": "ok",
+        "documents": result.documents,
+        "chunks": result.chunks,
+        "nodes_created": result.nodes_created,
+        "edges_created": result.edges_created,
+        **rag.stats(),
+    })
+
+
+def cmd_retrieve(args):
+    from intention_engine.rag import IntentionRAG, RAGConfig
+    config = RAGConfig(
+        graph_name=args.graph,
+        max_results=args.top,
+        context_format=args.format,
+    )
+    rag = IntentionRAG(config=config)
+    context = rag.retrieve(
+        query=args.query,
+        explore=not args.no_explore,
+    )
+    _json_out({
+        "query": args.query,
+        "context": context,
+        "stats": rag.stats(),
+    })
+
+
+def cmd_documents(args):
+    from intention_engine.rag import IntentionRAG, RAGConfig
+    rag = IntentionRAG(RAGConfig(graph_name=args.graph))
+    docs = rag.list_documents()
+    _json_out({"count": len(docs), "documents": docs})
+
+
 # === Argument Parsing ===
 
 
@@ -317,6 +386,33 @@ def main():
     # graphs
     sub.add_parser("graphs", help="List all named graphs")
 
+    # ingest
+    p = sub.add_parser("ingest", help="Ingest a file or directory")
+    p.add_argument("graph")
+    p.add_argument("path")
+    p.add_argument("--recursive", action="store_true", default=True)
+    p.add_argument("--no-recursive", dest="recursive", action="store_false")
+    p.add_argument("--chunk-size", type=int, default=512)
+
+    # ingest-text
+    p = sub.add_parser("ingest-text", help="Ingest raw text")
+    p.add_argument("graph")
+    p.add_argument("text")
+    p.add_argument("--name", default="inline")
+    p.add_argument("--ontology", default="text")
+
+    # retrieve
+    p = sub.add_parser("retrieve", help="Retrieve context for a query (RAG)")
+    p.add_argument("graph")
+    p.add_argument("query")
+    p.add_argument("--top", type=int, default=10)
+    p.add_argument("--format", choices=["text", "markdown", "xml"], default="text")
+    p.add_argument("--no-explore", action="store_true")
+
+    # documents
+    p = sub.add_parser("documents", help="List ingested documents")
+    p.add_argument("graph")
+
     args = parser.parse_args()
 
     cmd_map = {
@@ -331,6 +427,10 @@ def main():
         "explain": cmd_explain,
         "decay": cmd_decay,
         "graphs": cmd_graphs,
+        "ingest": cmd_ingest,
+        "ingest-text": cmd_ingest_text,
+        "retrieve": cmd_retrieve,
+        "documents": cmd_documents,
     }
 
     cmd_map[args.command](args)

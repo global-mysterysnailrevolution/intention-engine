@@ -18,6 +18,10 @@ from .models import (
 from .engine import IntentionEngine
 from .hypergraph import HypergraphStore
 from .encoder import HashEncoder
+from .rag import IntentionRAG, RAGConfig
+from .ingestion import IngestionPipeline, IngestConfig, IngestResult
+from .context import ContextAssembler, ContextConfig
+from .chunker import DocumentChunker, ChunkerConfig
 
 __all__ = [
     "IntentionEngine",
@@ -36,4 +40,13 @@ __all__ = [
     "EngineConfig",
     "HashEncoder",
     "_make_id",
+    "IntentionRAG",
+    "RAGConfig",
+    "IngestionPipeline",
+    "IngestConfig",
+    "IngestResult",
+    "ContextAssembler",
+    "ContextConfig",
+    "DocumentChunker",
+    "ChunkerConfig",
 ]

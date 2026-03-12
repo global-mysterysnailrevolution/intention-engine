@@ -293,6 +293,101 @@ def main():
                 graphs.append({"name": name, "nodes": n_nodes, "edges": n_edges})
         return json.dumps({"graphs": graphs})
 
+    @mcp.tool()
+    def intention_ingest(graph: str, path: str, recursive: bool = True, chunk_size: int = 512) -> str:
+        """Ingest a file or directory into the knowledge graph.
+
+        Creates document, section, and chunk nodes with structural hyperedges.
+        Files are chunked with structural awareness (headings, functions, paragraphs).
+
+        Args:
+            graph: Name of the hypergraph
+            path: Absolute path to a file or directory to ingest
+            recursive: Whether to recurse into subdirectories
+            chunk_size: Target chunk size in characters
+        """
+        from intention_engine.rag import IntentionRAG, RAGConfig
+        config = RAGConfig(graph_name=graph, chunk_size=chunk_size)
+        rag = IntentionRAG(config=config)
+        result = rag.ingest(path, recursive=recursive)
+        return json.dumps({
+            "status": "ok",
+            "documents": result.documents,
+            "chunks": result.chunks,
+            "nodes_created": result.nodes_created,
+            "edges_created": result.edges_created,
+            "files": result.files,
+            **rag.stats(),
+        })
+
+    @mcp.tool()
+    def intention_ingest_text(graph: str, text: str, name: str = "inline", ontology: str = "text") -> str:
+        """Ingest raw text into the knowledge graph.
+
+        Args:
+            graph: Name of the hypergraph
+            text: The text content to ingest
+            name: A label for the text
+            ontology: Category tag
+        """
+        from intention_engine.rag import IntentionRAG, RAGConfig
+        config = RAGConfig(graph_name=graph)
+        rag = IntentionRAG(config=config)
+        result = rag.ingest_text(text, name, ontology)
+        return json.dumps({
+            "status": "ok",
+            "documents": result.documents,
+            "chunks": result.chunks,
+            **rag.stats(),
+        })
+
+    @mcp.tool()
+    def intention_retrieve(
+        graph: str,
+        query: str,
+        max_results: int = 10,
+        format: str = "text",
+        explore: bool = True,
+    ) -> str:
+        """Retrieve relevant context from the knowledge graph for a query.
+
+        This is the core RAG replacement operation. Returns formatted context
+        ready for LLM consumption. Each call potentially discovers and persists
+        new cross-document connections.
+
+        Args:
+            graph: Name of the hypergraph
+            query: Natural language query/intention
+            max_results: Maximum chunks to retrieve
+            format: Output format — "text", "markdown", or "xml"
+            explore: Whether to discover new connections (True) or just use existing (False)
+        """
+        from intention_engine.rag import IntentionRAG, RAGConfig
+        config = RAGConfig(
+            graph_name=graph,
+            max_results=max_results,
+            context_format=format,
+        )
+        rag = IntentionRAG(config=config)
+        context = rag.retrieve(query=query, explore=explore)
+        return json.dumps({
+            "query": query,
+            "context": context,
+            "stats": rag.stats(),
+        })
+
+    @mcp.tool()
+    def intention_documents(graph: str) -> str:
+        """List all documents that have been ingested into a knowledge graph.
+
+        Args:
+            graph: Name of the hypergraph
+        """
+        from intention_engine.rag import IntentionRAG, RAGConfig
+        rag = IntentionRAG(RAGConfig(graph_name=graph))
+        docs = rag.list_documents()
+        return json.dumps({"count": len(docs), "documents": docs})
+
     mcp.run()
 
 
